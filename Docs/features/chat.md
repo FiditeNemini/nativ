@@ -23,6 +23,44 @@ exposes host capabilities to the model as consent-gated tools. Source lives in
 - The active model is chosen from the model picker; only language-capable models are
   selectable as the conversation model.
 
+## Conversation compaction
+
+**Auto compact** is enabled by default in Model Configuration. With
+a compaction-capable mlx-vlm server, chat uses `/v1/responses` and asks the server
+to summarize older context before generation. Use the slider below **Auto compact**
+under **Model Context** to choose when it triggers; hover the info icon for details.
+Its scale runs from 1–100%, with
+the handle limited to 20–90% (default 75%). Changes apply to
+the next message without restarting the server. With a 10,000-token context window,
+50% triggers at 5,000 input tokens. Compaction can happen earlier when needed to
+reserve the configured output budget and 1,024 tokens of summary headroom.
+If neither server nor local model metadata gives a limit, Nativ uses an
+8,192-token fallback.
+
+Chat shows compaction progress and a completed notice with server-measured input
+token counts when available. The completed notice is saved with the transcript;
+an interrupted progress indicator is not restored after relaunch.
+
+The full transcript stays visible and editable. Encrypted compaction state is saved
+separately with the session and replayed with subsequent messages, including tool
+results. Editing covered messages or changing the model, server, or instructions
+rebuilds the request from the transcript. Failed or cancelled requests do not replace
+saved compaction state. Enable **Prefix Caching** in Model Configuration to reuse
+the new compacted prefix. Compaction also works with caching disabled.
+
+Compaction requires a server that supports the Responses compaction API. Unsupported
+servers return an error. To build against the unreleased compaction API in
+[mlx-vlm PR #2408](https://github.com/Blaizzy/mlx-vlm/pull/2408), point the bundle
+build at a checkout of that branch:
+
+```sh
+MLX_VLM_SOURCE_PATH=/path/to/mlx-vlm-compaction make xcode-build
+```
+
+Keep the server's compaction encryption key across restarts. A changed or missing
+key makes existing capsules unusable; the transcript is still preserved. Disabling
+compaction sends the full transcript through Chat Completions.
+
 ## Sessions
 
 Each conversation is one session, persisted as a JSON file under
@@ -52,10 +90,24 @@ its recorded token count exceeds the selected model's context window.
 ## Project chat environments
 
 New project chats start in **Local**, using the project's existing folder. Before sending
-messages or opening work-pane items, choose **Local > Worktree…** above the composer to
-create a separate Git checkout and a `nativ/<chat-id>` branch for that chat. The project
-must be a Git repository with at least one commit. Worktree creation starts at its current
-commit; it leaves uncommitted files and the project's current branch unchanged.
+messages or opening work-pane items, check **Worktree** above the composer to reserve a separate
+Git checkout directly, without a confirmation popup. Uncheck it before the first message to
+return to the local project folder. Once the chat starts or a checkout exists, the choice is locked.
+The project must be a Git repository with at least one commit. On the first message, before
+the agent starts, Nativ fetches the remote's
+default branch, asks the selected model for a descriptive branch name based on that message,
+and creates the checkout on `nativ/<name>` without a chat ID or numeric suffix. If naming fails,
+returns an invalid name, or names an existing local branch, Nativ picks two random words such
+as `nativ/quiet-cedar`, excluding existing local branches. It prefers `origin`, otherwise the current
+branch's remote or the sole configured remote. Repositories without a remote use their local
+commit. The project's current branch and uncommitted files stay unchanged.
+
+A setup card above the composer shows **Sync remote**, **Name branch**, and **Create worktree**,
+with a spinner on the active step and circular checkmarks on completed steps. The completed
+card closes automatically after one second. Sync or checkout
+failures stop the request before the agent can act; send another message to retry using the
+original first prompt. Existing worktrees are never synced or renamed automatically, and an
+interrupted checkout resumes its saved branch and commit.
 
 File read/write/search tools, project MCP scope, and new terminals use the chat's checkout.
 Projects rooted in a repository subfolder keep that relative folder in the checkout.
@@ -68,11 +120,11 @@ never fall back to the local project or chat storage.
 Empty project chats show project, environment, and branch controls directly above the composer.
 Once the conversation starts, the **Pinned summary** toolbar toggle opens these controls,
 the checkout path, project-tool status, and file count without a full-width header.
-The environment menu shows the current Git branch and provides **Copy branch name**,
+The project menu beside the branch name provides **Copy branch name**,
 **Copy folder path**, and **Show in Finder**. Checkouts live under the app profile's
 `Chat/Worktrees/<chat-id>` folder. Each chat keeps this association across launches;
 an unavailable checkout disables project tools instead of redirecting them to Local.
-Failed setup remains attached to the chat and can be retried from the environment menu.
+Pending or failed setup remains attached to the chat across launches and resumes when a message is sent.
 Agents can create, switch, or rename branches through the approved terminal. Git is the
 source of truth: the visible controls refresh every two seconds and agent context reads HEAD
 on every model request, including follow-ups in the same turn. Detached HEAD shows the commit
