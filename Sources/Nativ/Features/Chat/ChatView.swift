@@ -1163,10 +1163,16 @@ private struct ChatMessageRow: View, @MainActor Equatable {
                 if displaysThinkingBubble {
                     ChatThinkingBubble(
                         content: message.reasoningContent,
-                        isThinking: message.isStreaming && message.content.isEmpty,
+                        isThinking: message.isStreaming && message.content.isEmpty && message.streamingToolCalls.isEmpty,
                         isStreaming: message.isStreaming,
                         thinkingDuration: message.thinkingDuration
                     )
+                }
+
+                if message.role == .assistant, message.isStreaming {
+                    ForEach(Array(message.streamingToolCalls.enumerated()), id: \.offset) { _, call in
+                        ChatAgentStepCell(streamingCall: call)
+                    }
                 }
 
                 if !message.annotationPresentation.annotations.isEmpty {
@@ -1353,7 +1359,7 @@ private struct ChatMessageRow: View, @MainActor Equatable {
             return false
         }
         return !message.reasoningContent.isEmpty
-            || (message.isThinkingEnabled && message.isStreaming && message.content.isEmpty)
+            || (message.isThinkingEnabled && message.isStreaming && message.content.isEmpty && message.streamingToolCalls.isEmpty)
     }
 
     private var rendersMarkdown: Bool {
@@ -1449,18 +1455,16 @@ private struct ChatCompactionNotice: View {
             HStack(spacing: 12) {
                 rule
                 HStack(spacing: 7) {
-                    if message.isCompacting && !reduceMotion {
-                        PhaseAnimator([false, true]) { compact in
-                            symbol(compact: compact)
-                        } animation: { _ in
-                            .easeInOut(duration: 1.1)
+                    symbol
+                    Group {
+                        if message.isCompacting {
+                            ChatThinkingShimmerText(title)
+                        } else {
+                            Text(title)
                         }
-                    } else {
-                        symbol(compact: true)
                     }
-                    Text(title)
-                        .contentTransition(.opacity)
-                        .lineLimit(1)
+                    .contentTransition(.opacity)
+                    .lineLimit(1)
                 }
                 .fixedSize()
                 rule
@@ -1499,7 +1503,7 @@ private struct ChatCompactionNotice: View {
             .accessibilityHidden(true)
     }
 
-    private func symbol(compact: Bool) -> some View {
+    private var symbol: some View {
         ZStack {
             Path { path in
                 path.move(to: CGPoint(x: 4, y: 2))
@@ -1508,10 +1512,10 @@ private struct ChatCompactionNotice: View {
                 path.addLines([CGPoint(x: 17, y: 16), CGPoint(x: 17, y: 5), CGPoint(x: 14, y: 2)])
             }
             .stroke(style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
-            VStack(alignment: .leading, spacing: compact ? 2 : 4) {
-                Capsule().frame(width: compact ? 7 : 9, height: 1.4)
-                Capsule().frame(width: compact ? 7 : 9, height: 1.4)
-                Capsule().frame(width: compact ? 4 : 6, height: 1.4)
+            VStack(alignment: .leading, spacing: 2) {
+                Capsule().frame(width: 7, height: 1.4)
+                Capsule().frame(width: 7, height: 1.4)
+                Capsule().frame(width: 4, height: 1.4)
             }
         }
         .frame(width: 18, height: 18)
@@ -1621,6 +1625,7 @@ private struct ChatAgentTurnRow: View {
 
     private func shouldRender(_ message: ChatTranscriptMessage) -> Bool {
         message.isCompacting || message.compactionMetrics != nil
+            || !message.streamingToolCalls.isEmpty
             || !message.content.isEmpty
             || !message.imageAttachments.isEmpty
             || message.responseMetrics != nil
@@ -1786,7 +1791,12 @@ private struct ChatAgentStepCell: View {
     let onSelectImageModel: (UUID, String) -> Void
     let onCancelImageModelSelection: (UUID) -> Void
     let onExploreImageModels: (ChatImageOperation) -> Void
-    @State private var isExpanded = false
+    var isReceivingArguments = false
+    @State private var isExpanded: Bool?
+
+    private var showsDetails: Bool {
+        isExpanded ?? isReceivingArguments
+    }
 
     private var isAwaitingConsent: Bool {
         message.toolStatus == .awaitingConsent
@@ -1801,13 +1811,13 @@ private struct ChatAgentStepCell: View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
                 withAnimation(.snappy(duration: 0.2)) {
-                    isExpanded.toggle()
+                    isExpanded = !showsDetails
                 }
             } label: {
                 header
             }
             .buttonStyle(.plain)
-            .help(isExpanded ? "Hide call details" : "Show call details")
+            .help(showsDetails ? "Hide call details" : "Show call details")
             .disabled(isAwaitingConsent || isAwaitingImageModelSelection)
 
             if isAwaitingImageModelSelection {
@@ -1818,7 +1828,7 @@ private struct ChatAgentStepCell: View {
                 Divider()
                     .padding(.top, 7)
                 consentPrompt
-            } else if isExpanded {
+            } else if showsDetails {
                 Divider()
                     .padding(.top, 7)
                 details
@@ -1860,7 +1870,7 @@ private struct ChatAgentStepCell: View {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .rotationEffect(.degrees(showsDetails ? 90 : 0))
                 }
             }
             if message.toolStatus == .failed, let toolErrorMessage {
@@ -1875,18 +1885,22 @@ private struct ChatAgentStepCell: View {
 
     @ViewBuilder
     private var statusBadge: some View {
-        switch message.toolStatus {
-        case .succeeded:
-            NativStatusBadge(text: "Done", tone: .success)
-        case .failed:
-            NativStatusBadge(text: "Failed", tone: .danger)
-        case .cancelled:
-            NativStatusBadge(text: "Canceled", tone: .neutral)
-        case .declined:
-            NativStatusBadge(text: "Declined", tone: .neutral)
-        case .preparing, .running, .awaitingConsent,
-            .awaitingImageModelSelection, nil:
-            EmptyView()
+        if isReceivingArguments {
+            NativStatusBadge(text: "In progress", tone: .active)
+        } else {
+            switch message.toolStatus {
+            case .succeeded:
+                NativStatusBadge(text: "Done", tone: .success)
+            case .failed:
+                NativStatusBadge(text: "Failed", tone: .danger)
+            case .cancelled:
+                NativStatusBadge(text: "Canceled", tone: .neutral)
+            case .declined:
+                NativStatusBadge(text: "Declined", tone: .neutral)
+            case .preparing, .running, .awaitingConsent,
+                .awaitingImageModelSelection, nil:
+                EmptyView()
+            }
         }
     }
 
@@ -2074,7 +2088,15 @@ private struct ChatAgentStepCell: View {
                 Text("Arguments")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
-                NativCodeBlock(raw: formattedArguments)
+                if isReceivingArguments {
+                    ScrollView {
+                        NativCodeBlock(raw: formattedArguments)
+                    }
+                    .defaultScrollAnchor(.bottom)
+                    .frame(maxHeight: 240)
+                } else {
+                    NativCodeBlock(raw: formattedArguments)
+                }
             }
             if !message.content.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -2099,11 +2121,13 @@ private struct ChatAgentStepCell: View {
     private var title: String {
         // For MCP tools show the bare tool name, not the mcp__slug__ prefix.
         let name = mcpToolParts?.tool ?? message.toolName
-        return ChatToolPresentation.title(toolName: name, status: message.toolStatus)
+        return ChatToolPresentation.title(
+            toolName: name, status: isReceivingArguments ? nil : message.toolStatus)
     }
 
     private var symbolName: String {
-        ChatToolPresentation.symbolName(toolName: message.toolName, status: message.toolStatus)
+        ChatToolPresentation.symbolName(
+            toolName: message.toolName, status: isReceivingArguments ? nil : message.toolStatus)
     }
 
     private var statusTone: NativStatusTone {
@@ -2135,7 +2159,8 @@ private struct ChatAgentStepCell: View {
     private var mcpServerSlug: String? { mcpToolParts?.slug }
 
     private var accessibilityStatus: String {
-        switch message.toolStatus {
+        if isReceivingArguments { return "in progress" }
+        return switch message.toolStatus {
         case .preparing:
             "preparing"
         case .running:
@@ -2164,6 +2189,28 @@ private struct ChatAgentStepCell: View {
             return nil
         }
         return object["error"] as? String
+    }
+}
+
+private extension ChatAgentStepCell {
+    init(streamingCall: MLXChatToolCall) {
+        self.init(
+            message: ChatTranscriptMessage(
+                role: .tool,
+                content: "",
+                toolCallID: streamingCall.id,
+                toolName: streamingCall.function?.name,
+                toolStatus: .preparing,
+                toolArguments: streamingCall.function?.arguments
+            ),
+            imageModelSelectionRequest: nil,
+            onConfirm: { _ in },
+            onDeny: { _ in },
+            onSelectImageModel: { _, _ in },
+            onCancelImageModelSelection: { _ in },
+            onExploreImageModels: { _ in },
+            isReceivingArguments: true
+        )
     }
 }
 

@@ -2816,10 +2816,9 @@ final class ChatViewModel: ObservableObject {
                             break
                         }
                     }
-                    let threshold = try ChatCompactionState.threshold(
+                    let threshold = ChatCompactionState.threshold(
                         modelContext: contextLimit,
                         configuredContext: activeSettings.maxKVSize,
-                        maxOutput: request.maxTokens,
                         percent: activeSettings.compactionThresholdPercent
                     )
                     let saved = currentSessionID == queuedRequest.sessionID
@@ -3369,9 +3368,10 @@ final class ChatViewModel: ObservableObject {
                     )
                 else { return prepared }
                 let promptTokens = try await client.countPromptTokens(for: request).inputTokens
-                let promptLimit = max(
-                    0,
-                    effectiveContextLimit - request.maxTokens - ChatDocumentTokenBudget.safetyMargin
+                let promptLimit = ChatDocumentTokenBudget.promptLimit(
+                    contextLimit: effectiveContextLimit,
+                    maximumOutputTokens: request.maxTokens,
+                    compactionEnabled: settings.compactionEnabled
                 )
                 guard promptTokens > promptLimit else { return prepared }
 
@@ -3395,7 +3395,8 @@ final class ChatViewModel: ObservableObject {
                     basePromptTokens: basePromptTokens,
                     documentPromptTokens: promptTokens,
                     contextLimit: effectiveContextLimit,
-                    maximumOutputTokens: request.maxTokens
+                    maximumOutputTokens: request.maxTokens,
+                    compactionEnabled: settings.compactionEnabled
                 )
                 if nextLimit >= prepared.characterLimit {
                     nextLimit = max(0, prepared.characterLimit - 1)
@@ -3829,13 +3830,22 @@ final class ChatViewModel: ObservableObject {
     private func append(event: MLXChatStreamDelta, to id: UUID, in sessionID: UUID) {
         let content = event.content ?? ""
         let reasoning = event.reasoningContent ?? ""
+        let hasToolUpdates = event.toolCalls?.isEmpty == false
         let refreshMetrics = shouldRefreshLiveMetrics(event, for: id)
-        guard !content.isEmpty || !reasoning.isEmpty || refreshMetrics else {
+        guard !content.isEmpty || !reasoning.isEmpty || hasToolUpdates || refreshMetrics else {
             return
         }
 
         updateMessage(id, in: sessionID) { message in
             message.isCompacting = false
+            if let toolCalls = event.toolCalls, !toolCalls.isEmpty {
+                var accumulator = MLXChatToolCallAccumulator(toolCalls: message.streamingToolCalls)
+                accumulator.merge(toolCalls)
+                message.streamingToolCalls = accumulator.toolCalls
+                if !message.reasoningContent.isEmpty, message.thinkingDuration == nil {
+                    message.thinkingDuration = Date().timeIntervalSince(message.createdAt)
+                }
+            }
             if !reasoning.isEmpty {
                 message.reasoningContent.append(reasoning)
             }
@@ -3858,7 +3868,7 @@ final class ChatViewModel: ObservableObject {
                 )
             }
         }
-        if !content.isEmpty || !reasoning.isEmpty, currentSessionID == sessionID {
+        if !content.isEmpty || !reasoning.isEmpty || hasToolUpdates, currentSessionID == sessionID {
             bumpScroll()
         }
     }
@@ -3909,6 +3919,7 @@ final class ChatViewModel: ObservableObject {
                 message.reasoningContent = fallbackReasoningContent
             }
             message.toolCalls = toolCalls
+            message.streamingToolCalls = []
             if !message.reasoningContent.isEmpty,
                 message.thinkingDuration == nil
             {
@@ -3935,6 +3946,7 @@ final class ChatViewModel: ObservableObject {
                 id, in: sessionID,
                 mutate: { message in
                     message.role = .error
+                    message.streamingToolCalls = []
                     message.content = error.localizedDescription
                     message.isStreaming = false
                     message.isCompacting = false
