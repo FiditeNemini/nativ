@@ -15,7 +15,13 @@ enum ModelPrimaryTask: Equatable, Sendable {
 }
 
 enum ModelPrimaryTaskResolver {
-    static let bundledRegistry = try? Nativ.modelTypeRegistry()
+    static let bundledRegistryResult = Result { try Nativ.modelTypeRegistry() }
+    static let bundledRegistry = try? bundledRegistryResult.get()
+
+    static var runtimeConfigurationError: String? {
+        guard case .failure = bundledRegistryResult else { return nil }
+        return "Nativ couldn’t read model capabilities from its bundled runtime. Reinstall or rebuild Nativ to restore model support detection. Your downloaded models are unaffected."
+    }
 
     static func resolve(
         model: String,
@@ -57,7 +63,9 @@ enum ModelPrimaryTaskResolver {
             || pipeline == "feature-extraction" || pipeline == "sentence-similarity" {
             return capabilities.contains(.embeddings) ? .embeddings : .nonLanguage
         }
-        if !capabilities.isDisjoint(with: [.imageGeneration, .imageEditing, .speculativeDrafters]) {
+        if !capabilities.isDisjoint(with: [
+            .imageGeneration, .imageEditing, .speculativeDrafters, .voiceActivityDetection,
+        ]) {
             return .nonLanguage
         }
         if registry.supportsTextGeneration(for: modelType) == true {
