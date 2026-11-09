@@ -179,8 +179,10 @@ enum MarkdownLayouter {
                         output.addAttribute(.foregroundColor, value: color, range: range)
                     }
                 }
+                // Leave room above the first line for the 24pt copy button and its 6pt insets.
                 addText(
                     output, x: x, width: width, id: id, horizontal: true, padding: 16,
+                    topPadding: code.isEmpty ? nil : 36,
                     background: style.background)
                 if !code.isEmpty, let last = blocks.indices.last, blocks[last].id == id {
                     blocks[last].copyText = code
@@ -230,23 +232,25 @@ enum MarkdownLayouter {
 
         mutating func addText(
             _ text: NSAttributedString, x: CGFloat, width: CGFloat, id: String,
-            horizontal: Bool = false, padding: CGFloat = 0, centered: Bool = false,
+            horizontal: Bool = false, padding: CGFloat = 0, topPadding: CGFloat? = nil,
+            centered: Bool = false,
             background: NSColor? = nil
         ) {
             guard text.length > 0 else { return }
+            let top = topPadding ?? padding
             let available = max(1, width - padding * 2)
             let preferred = horizontal ? measure(text, width: 100_000).width : available
             let textWidth = horizontal ? max(available, preferred + 1) : available
             let metrics = measure(text, width: textWidth)
             let scrolls = horizontal && textWidth > available + 1
-            let height = metrics.height + padding * 2 + (scrolls ? 12 : 0)
+            let height = metrics.height + top + padding + (scrolls ? 12 : 0)
             let contentSize = CGSize(
-                width: textWidth + padding * 2, height: metrics.height + padding * 2)
+                width: textWidth + padding * 2, height: metrics.height + top + padding)
             let textX = centered && !scrolls ? max(padding, (width - preferred) / 2) : padding
             let fragmentWidth = centered && !scrolls ? min(textWidth, preferred + 1) : textWidth
             let fragment = MarkdownTextFragment(
                 id: "text", text: text,
-                frame: CGRect(x: textX, y: padding, width: fragmentWidth, height: metrics.height))
+                frame: CGRect(x: textX, y: top, width: fragmentWidth, height: metrics.height))
             var block = MarkdownBlock(
                 id: id, frame: CGRect(x: x, y: y, width: width, height: height),
                 contentSize: contentSize, text: [fragment], scrollsHorizontally: scrolls)
