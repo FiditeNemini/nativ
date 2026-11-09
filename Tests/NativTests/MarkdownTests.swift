@@ -183,6 +183,62 @@ final class MarkdownGeometryTests: XCTestCase {
         XCTAssertEqual(cache.layout(source, width: 600, style: .init(fontSize: 15)).size, wide.size)
     }
 
+    func testCodeBlocksExposeCopyTextAndScrollLongLines() throws {
+        let command = #"log show --predicate 'process == "Nativ"' --last 1h --style compact --info"#
+        let source = "Run:\n\n```bash\n\(command)\n```\n"
+        let layout = MarkdownLayouter.layout(source, width: 260, style: .init())
+        let code = try XCTUnwrap(layout.blocks.first { $0.copyText != nil })
+        XCTAssertEqual(code.copyText, command)
+        XCTAssertTrue(code.scrollsHorizontally)
+        XCTAssertGreaterThan(code.contentSize.width, code.frame.width)
+        XCTAssertEqual(layout.blocks.filter { $0.copyText != nil }.count, 1)
+    }
+
+    func testCodeBlockCopyButtonLeavesFirstLineVisibleAndSelectable() throws {
+        func descendants(of view: NSView) -> [NSView] {
+            view.subviews.flatMap { [$0] + descendants(of: $0) }
+        }
+
+        let command = String(repeating: "W", count: 30)
+        for width: CGFloat in [270, 160] {
+            let surface = MarkdownSurface()
+            surface.configure(content: "```text\n\(command)\n```", style: .init())
+            let layout = surface.preflight(width: width)
+            XCTAssertEqual(try XCTUnwrap(layout.blocks.first).scrollsHorizontally, width == 160)
+            surface.frame = CGRect(origin: .zero, size: layout.size)
+            let window = NSWindow(
+                contentRect: surface.frame, styleMask: [.titled], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            defer { window.close() }
+            window.contentView = surface
+            surface.layoutSubtreeIfNeeded()
+            surface.refreshVisibleBlocks()
+
+            let views = descendants(of: surface)
+            let button = try XCTUnwrap(views.compactMap { $0 as? NSButton }.first)
+            let buttonFrame = button.convert(button.bounds, to: surface)
+            if let scroll = views.compactMap({ $0 as? NSScrollView }).first {
+                scroll.layoutSubtreeIfNeeded()
+                let document = try XCTUnwrap(scroll.documentView)
+                scroll.contentView.scroll(to: CGPoint(
+                    x: document.bounds.maxX - scroll.contentView.bounds.width, y: 0))
+                scroll.reflectScrolledClipView(scroll.contentView)
+                XCTAssertEqual(button.convert(button.bounds, to: surface), buttonFrame)
+            }
+
+            let text = try XCTUnwrap(surface.visibleTextViews.first)
+            let glyphOnScreen = text.firstRect(
+                forCharacterRange: NSRange(location: command.utf16.count - 1, length: 1),
+                actualRange: nil)
+            let glyph = surface.convert(window.convertFromScreen(glyphOnScreen), from: nil)
+            XCTAssertFalse(glyph.isEmpty)
+            XCTAssertTrue(surface.bounds.contains(glyph), "The line's final character must be visible")
+            XCTAssertFalse(buttonFrame.intersects(glyph), "Copy must not cover the first line")
+            let point = surface.convert(CGPoint(x: glyph.midX, y: glyph.midY), to: surface.superview)
+            XCTAssertTrue(surface.hitTest(point) === text, "The final character must remain selectable")
+        }
+    }
+
     func testTablesFitWrapAndKeepColumnAlignment() throws {
         let source = """
             | Name | Notes | Context |
