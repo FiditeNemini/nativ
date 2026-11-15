@@ -1166,7 +1166,7 @@ private struct ChatMessageRow: View, @MainActor Equatable {
     let onExploreImageModels: (ChatImageOperation) -> Void
     let onPreviewAttachment: (ChatImageAttachment) -> Void
     var displaysModelTitle = true
-    var displaysThinking = true
+    var displaysActivity = true
     var prefillProgress = NativPrefillProgressState()
     @State private var didCopyMessage = false
     @State private var isHoveringMessage = false
@@ -1181,7 +1181,7 @@ private struct ChatMessageRow: View, @MainActor Equatable {
             && lhs.isEditingUserMessage == rhs.isEditingUserMessage
             && lhs.canForkAssistantResponse == rhs.canForkAssistantResponse
             && lhs.displaysModelTitle == rhs.displaysModelTitle
-            && lhs.displaysThinking == rhs.displaysThinking
+            && lhs.displaysActivity == rhs.displaysActivity
             && lhs.prefillProgress == rhs.prefillProgress
     }
 
@@ -1198,7 +1198,9 @@ private struct ChatMessageRow: View, @MainActor Equatable {
                 .foregroundStyle(.secondary)
             }
 
-            ChatCompactionNotice(message: message)
+            if displaysActivity {
+                ChatCompactionNotice(message: message)
+            }
 
             if message.role == .tool {
                 ChatAgentStepCell(
@@ -1225,13 +1227,13 @@ private struct ChatMessageRow: View, @MainActor Equatable {
                 if displaysThinkingBubble {
                     ChatThinkingBubble(
                         content: message.reasoningContent,
-                        isThinking: message.isStreaming && message.content.isEmpty && message.streamingToolCalls.isEmpty,
+                        isThinking: message.isThinking,
                         isStreaming: message.isStreaming,
                         thinkingDuration: message.thinkingDuration
                     )
                 }
 
-                if message.role == .assistant, message.isStreaming {
+                if displaysActivity, message.role == .assistant, message.isStreaming {
                     ForEach(Array(message.streamingToolCalls.enumerated()), id: \.offset) { _, call in
                         ChatAgentStepCell(streamingCall: call)
                     }
@@ -1433,15 +1435,11 @@ private struct ChatMessageRow: View, @MainActor Equatable {
     }
 
     private var displaysThinkingBubble: Bool {
-        displaysThinking && hasThinkingContent
+        displaysActivity && hasThinkingContent
     }
 
     private var hasThinkingContent: Bool {
-        guard message.role == .assistant else {
-            return false
-        }
-        return !message.reasoningContent.isEmpty
-            || (message.isThinkingEnabled && message.isStreaming && message.content.isEmpty && message.streamingToolCalls.isEmpty)
+        message.showsThinkingBubble
     }
 
     private var rendersMarkdown: Bool {
@@ -1634,37 +1632,16 @@ private struct ChatAgentTurnRow: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-            ForEach(turn.assistantMessages.filter { $0.id != turn.finalAssistantMessage?.id }) { message in
-                ChatCompactionNotice(message: message)
-            }
-
-            if showsThinkingBubble {
-                ChatThinkingBubble(
-                    content: turn.reasoningContent,
-                    isThinking: turn.isThinking,
-                    isStreaming: turn.isAssistantStreaming,
-                    thinkingDuration: turn.thinkingDuration
-                )
-            }
-
             if !turn.toolMessages.isEmpty {
-                ChatToolUsageSummaryRow(
+                ChatAgentActivityRow(
                     turn: turn,
                     imageModelSelectionRequests: imageModelSelectionRequests,
                     onConfirmToolConsent: onConfirmToolConsent,
                     onDenyToolConsent: onDenyToolConsent,
                     onSelectImageModel: onSelectImageModel,
                     onCancelImageModelSelection: onCancelImageModelSelection,
-                    onExploreImageModels: onExploreImageModels
-                )
-            }
-
-            ForEach(toolMessagesWithAttachments) { message in
-                ChatImageAttachmentStack(
-                    attachments: message.imageAttachments,
-                    isUserMessage: false,
-                    showsSaveButton: true,
-                    onPreview: onPreviewAttachment
+                    onExploreImageModels: onExploreImageModels,
+                    onPreviewAttachment: onPreviewAttachment
                 )
             }
 
@@ -1688,7 +1665,7 @@ private struct ChatAgentTurnRow: View {
                     onExploreImageModels: onExploreImageModels,
                     onPreviewAttachment: onPreviewAttachment,
                     displaysModelTitle: false,
-                    displaysThinking: false
+                    displaysActivity: false
                 )
                 .equatable()
                 .id(finalAssistantMessage.id)
@@ -1702,18 +1679,8 @@ private struct ChatAgentTurnRow: View {
             ?? "Assistant"
     }
 
-    private var showsThinkingBubble: Bool {
-        !turn.reasoningContent.isEmpty || turn.isThinking
-    }
-
-    private var toolMessagesWithAttachments: [ChatTranscriptMessage] {
-        turn.toolMessages.filter { !$0.imageAttachments.isEmpty }
-    }
-
     private func shouldRender(_ message: ChatTranscriptMessage) -> Bool {
-        message.isCompacting || message.compactionMetrics != nil
-            || !message.streamingToolCalls.isEmpty
-            || !message.content.isEmpty
+        !message.content.isEmpty
             || !message.imageAttachments.isEmpty
             || message.responseMetrics != nil
             || message.savedWorkFiles != nil
@@ -1721,7 +1688,7 @@ private struct ChatAgentTurnRow: View {
     }
 }
 
-private struct ChatToolUsageSummaryRow: View {
+private struct ChatAgentActivityRow: View {
     let turn: ChatAgentTurnPresentation
     let imageModelSelectionRequests: [UUID: ChatImageModelSelectionRequest]
     let onConfirmToolConsent: (UUID) -> Void
@@ -1729,38 +1696,53 @@ private struct ChatToolUsageSummaryRow: View {
     let onSelectImageModel: (UUID, String) -> Void
     let onCancelImageModelSelection: (UUID) -> Void
     let onExploreImageModels: (ChatImageOperation) -> Void
-    @State private var isExpanded = false
+    let onPreviewAttachment: (ChatImageAttachment) -> Void
+    @State private var isExpanded: Bool?
 
-    private var summary: ChatToolUsageSummary {
-        turn.toolUsage
+    private var showsActivity: Bool {
+        (isExpanded ?? turn.isWorking) || turn.toolUsage.requiresInteraction
+    }
+
+    private var completedTitle: String {
+        guard let duration = turn.thinkingDuration else { return "Worked" }
+        return "Worked for \(NativFormatting.elapsedDuration(duration))"
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
             Button {
                 withAnimation(.snappy(duration: 0.2)) {
-                    isExpanded.toggle()
+                    isExpanded = !showsActivity
                 }
             } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    statusIcon
+                HStack(spacing: 8) {
+                    if turn.isWorking {
+                        ChatThinkingShimmerText("Working")
+                    } else {
+                        Text(completedTitle)
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
 
-                    Text(summary.text)
-                        .font(.callout)
-                        .foregroundStyle(summaryColor)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 12)
 
-                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(showsActivity ? 90 : 0))
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .help(isExpanded ? "Hide tool details" : "Show tool details")
+            .help(showsActivity ? "Hide activity details" : "Show thinking and tool activity")
 
-            if isExpanded || summary.requiresInteraction {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(detailMessages) { message in
+            if showsActivity {
+                Divider()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(turn.activityMessages) { message in
                         if message.role == .tool {
                             ChatAgentStepCell(
                                 message: message,
@@ -1773,67 +1755,56 @@ private struct ChatToolUsageSummaryRow: View {
                                 onCancelImageModelSelection: onCancelImageModelSelection,
                                 onExploreImageModels: onExploreImageModels
                             )
-                        } else if !message.content.isEmpty {
-                            ChatIntermediateAssistantContent(message: message)
+                            if !message.imageAttachments.isEmpty {
+                                ChatImageAttachmentStack(
+                                    attachments: message.imageAttachments,
+                                    isUserMessage: false,
+                                    showsSaveButton: true,
+                                    onPreview: onPreviewAttachment
+                                )
+                            }
+                        } else if message.role == .assistant {
+                            ChatCompactionNotice(message: message)
+
+                            if !message.reasoningContent.isEmpty {
+                                ChatMessageText(
+                                    content: message.reasoningContent,
+                                    rendersMarkdown: true,
+                                    isStreaming: message.isStreaming
+                                )
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .lineSpacing(2)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if message.id != turn.finalAssistantMessage?.id, !message.content.isEmpty {
+                                ChatIntermediateAssistantContent(message: message)
+                            }
+                            if message.isStreaming {
+                                ForEach(Array(message.streamingToolCalls.enumerated()), id: \.offset) { _, call in
+                                    ChatAgentStepCell(streamingCall: call)
+                                }
+                            }
                         }
                     }
                 }
+                .padding(14)
                 .transition(.opacity)
             }
         }
-        .padding(.top, 4)
-        .padding(.bottom, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(Color.primary.opacity(0.075), lineWidth: 0.75)
+        }
+        .animation(.easeInOut(duration: 0.2), value: showsActivity)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(summary.text)
-    }
-
-    private var detailMessages: [ChatTranscriptMessage] {
-        let finalAssistantID = turn.finalAssistantMessage?.id
-        return turn.messages.filter { message in
-            message.id != finalAssistantID
-                && (message.role == .tool
-                    || (message.role == .assistant && !message.content.isEmpty))
-        }
-    }
-
-    @ViewBuilder
-    private var statusIcon: some View {
-        if summary.requiresInteraction {
-            Image(systemName: statusSymbolName)
-                .foregroundStyle(summaryColor)
-        } else if summary.hasFailure {
-            Image(systemName: statusSymbolName)
-                .foregroundStyle(summaryColor)
-        } else if summary.isActive {
-            ProgressView()
-                .controlSize(.small)
-        } else {
-            Image(systemName: statusSymbolName)
-                .foregroundStyle(summaryColor)
-        }
-    }
-
-    private var statusSymbolName: String {
-        if summary.requiresInteraction {
-            return "questionmark.circle"
-        }
-        if summary.hasFailure {
-            return "exclamationmark.triangle.fill"
-        }
-        if summary.hasNonSuccess {
-            return "xmark.circle"
-        }
-        return "book"
-    }
-
-    private var summaryColor: Color {
-        if summary.requiresInteraction {
-            return .orange
-        }
-        if summary.hasFailure {
-            return .red
-        }
-        return .secondary
     }
 }
 
@@ -1842,12 +1813,6 @@ private struct ChatIntermediateAssistantContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let modelID = message.modelID {
-                Text(NativFormatting.truncateModelName(modelID, maxLength: 42))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
             ChatMessageText(
                 content: message.content,
                 rendersMarkdown: true,
@@ -1865,9 +1830,7 @@ private struct ChatIntermediateAssistantContent: View {
                 ChatResponseMetricsRow(metrics: responseMetrics)
             }
         }
-        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
