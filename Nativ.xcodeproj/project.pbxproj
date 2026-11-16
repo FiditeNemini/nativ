@@ -562,6 +562,7 @@
 		D963B49FA9E1E766B9081104 /* NativBulkSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7069F17AAC82BF3F1FD1C95E /* NativBulkSelection.swift */; };
 		D98918D5585ACF5F132ADEDF /* ServerPrefillProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA514DE3EB0DC5E1C622E78A /* ServerPrefillProgressView.swift */; };
 		D9CA77A603AF02C2C70BC9FF /* MCPServerCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1DC9B27547E82B74589D6B5 /* MCPServerCatalogTests.swift */; };
+		DAA62E9334CE4308DCD5494E /* RequestKeyOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29531B1C78F489B67883628F /* RequestKeyOrderTests.swift */; };
 		DC1ED6C1A11081FB70F1F019 /* NativImageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FDFD79A8E1B8AA56AB21FE3 /* NativImageClient.swift */; };
 		DCE3BC508CE2CAD3059580F7 /* VoiceDictationTranscriptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6B4F745A6B4910276482015 /* VoiceDictationTranscriptTests.swift */; };
 		DD9CAC7451574C4B05DF1EDB /* Main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 677360D86DDAFAB194A995E7 /* Main.swift */; };
@@ -797,6 +798,7 @@
 		27D63523BA62CC95FDD8D51E /* FnControlShortcutMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FnControlShortcutMonitor.swift; sourceTree = "<group>"; };
 		27F42CEC1B39477AC13352E3 /* NativExtensionStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativExtensionStateStore.swift; sourceTree = "<group>"; };
 		28E03D8A56F9599760BFA6E2 /* ChatGitHubPullRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGitHubPullRequest.swift; sourceTree = "<group>"; };
+		29531B1C78F489B67883628F /* RequestKeyOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestKeyOrderTests.swift; sourceTree = "<group>"; };
 		2A1B515ECDF21B3616E5A3D1 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
 		2A1E6ED5DB03C63851E6AAE2 /* ChatSearchFilesToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSearchFilesToolTests.swift; sourceTree = "<group>"; };
 		2A876C6D832E392C40F6154E /* HuggingFaceDownloadCapacity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuggingFaceDownloadCapacity.swift; sourceTree = "<group>"; };
@@ -2004,6 +2006,7 @@
 				8513AE482EB6C3113080826A /* PDFDocumentTextExtractorTests.swift */,
 				C870DD5A3B825D12BC04EB9D /* PersistedDataChangeHubTests.swift */,
 				C01D6D1C8C321F16B5FD31F8 /* RealtimeAudioMeterTests.swift */,
+				29531B1C78F489B67883628F /* RequestKeyOrderTests.swift */,
 				FB10CC03A96A3EA80EF9343B /* ScheduledCapabilityTests.swift */,
 				0DBC23C0369758C056A8182D /* ScheduledTaskChatLinkerTests.swift */,
 				055942EFAB585BE493AC9AD7 /* ServerProcessEnvironmentTests.swift */,
@@ -2853,6 +2856,7 @@
 				2CA1076EA0874C55E7BB14B2 /* RealtimeAudioMeter.swift in Sources */,
 				D2D5168B1A4243EB55EB1D68 /* RealtimeAudioMeterTests.swift in Sources */,
 				B986E17A8D75D859BFF14BBF /* ReleaseVersion.swift in Sources */,
+				DAA62E9334CE4308DCD5494E /* RequestKeyOrderTests.swift in Sources */,
 				56B6A9EF8A305C95F9E81D06 /* Routine.swift in Sources */,
 				02571B1CDC31A5D168247CCD /* RoutineStore.swift in Sources */,
 				948BD3A177A258F0DA26A7C4 /* SafeLocalDirectoryReader.swift in Sources */,
@@ -3095,7 +3099,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGN_ENTITLEMENTS = Configuration/Nativ.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				ENABLE_HARDENED_RUNTIME = YES;
 				EX_ENABLE_EXTENSION_POINT_GENERATION = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -3107,7 +3111,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.4.5;
+				MARKETING_VERSION = 0.4.6;
 				NATIV_RELEASE_VERSION = "$(MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(NATIV_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(NATIV_PRODUCT_NAME)";
@@ -3121,13 +3125,13 @@
 			buildSettings = {
 				ARCHS = arm64;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Configuration/AudioExtension-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.4.5;
+				MARKETING_VERSION = 0.4.6;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(NATIV_VOICE_EXTENSION_BUNDLE_IDENTIFIER)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -3142,7 +3146,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGN_ENTITLEMENTS = Configuration/Nativ.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				ENABLE_HARDENED_RUNTIME = YES;
 				EX_ENABLE_EXTENSION_POINT_GENERATION = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -3154,7 +3158,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.4.5;
+				MARKETING_VERSION = 0.4.6;
 				NATIV_RELEASE_VERSION = "$(MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(NATIV_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(NATIV_PRODUCT_NAME)";
@@ -3194,13 +3198,13 @@
 			buildSettings = {
 				ARCHS = arm64;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Configuration/AudioExtension-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.4.5;
+				MARKETING_VERSION = 0.4.6;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(NATIV_VOICE_EXTENSION_BUNDLE_IDENTIFIER)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
