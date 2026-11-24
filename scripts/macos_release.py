@@ -252,6 +252,24 @@ def preview_appcast(records):
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
+def preview_items(github):
+    records = release_items(github, github.releases())
+    repository_url = f"https://github.com/{github.repository}"
+    for _, _, item in records:
+        enclosure = item.find("enclosure")
+        # parse_item has validated the source repository, tag, and archive name.
+        # Pre-transfer feeds still name the old repository, which no longer redirects.
+        source_url, archive_path = enclosure.get("url").split("/releases/download/")
+        if source_url != repository_url:
+            enclosure.set("url", f"{repository_url}/releases/download/{archive_path}")
+            tag, _ = archive_path.split("/")
+            link = item.find("link")
+            if link is not None and link.text == f"{source_url}/releases/tag/{tag}":
+                link.text = f"{repository_url}/releases/tag/{tag}"
+        github.request(enclosure.get("url"), head=True)
+    return records
+
+
 def validate_preview_release(preview):
     if preview.get("tag_name") != PREVIEW_TAG or preview.get("prerelease") is not True or preview.get("draft"):
         raise ValueError("The preview release must be a published prerelease; it must never be marked latest/stable")
@@ -279,7 +297,7 @@ def verify_appcast_download(github, tag, name, data):
 def publish_preview(github, output_path):
     # Reconstruct from versioned releases instead of editing the previous rolling
     # feed. This handles final releases, retractions, and publication retries.
-    records = release_items(github, github.releases(), check_downloads=True)
+    records = preview_items(github)
     if not records:
         raise ValueError("No completed macOS releases are available for the preview feed")
     data = preview_appcast(records)
@@ -483,7 +501,7 @@ def main():
         publish_preview(GitHub(args.repository), args.output)
     else:
         github = GitHub(args.repository)
-        records = release_items(github, github.releases(), check_downloads=True)
+        records = preview_items(github)
         # This command only generates a local feed; publish-preview uploads it.
         atomic_write(args.output, preview_appcast(records))
         print(f"Validated preview appcast with {len(records)} releases: {args.output}")

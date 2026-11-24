@@ -219,7 +219,7 @@ class ReleaseTests(unittest.TestCase):
             return original_request(url)
         with patch.object(github, "request", side_effect=fail_download):
             with self.assertRaises(OSError):
-                release.release_items(github, github.releases(), check_downloads=True)
+                release.preview_items(github)
 
     @unittest.skipUnless(sys.platform == "darwin", "Uses macOS PlistBuddy and the release shell script")
     def test_appcast_shell_preserves_full_tag_and_numeric_bundle_version(self):
@@ -755,6 +755,27 @@ class PreviewPublishingTests(unittest.TestCase):
         self.assertLess(verify_index, rename_index)
         self.assertEqual(github.asset_bytes("appcast-previous.xml"), b"previous feed")
         self.assertEqual(github.asset_bytes("appcast.xml"), self.output.read_bytes())
+
+    def test_preview_checks_and_publishes_transferred_release_urls(self):
+        github = FakePreviewGitHub()
+        tag = "v0.4.0rc1"
+        old_base = "https://github.com/Blaizzy/nativ/releases"
+        current_base = f"https://github.com/{REPOSITORY}/releases"
+        root = ET.fromstring(feed())
+        item = root.find("./channel/item")
+        enclosure = item.find("enclosure")
+        current_archive = enclosure.get("url")
+        enclosure.set("url", current_archive.replace(current_base, old_base))
+        ET.SubElement(item, "link").text = f"{old_base}/tag/{tag}"
+        github.feeds[tag] = ET.tostring(root)
+
+        with patch.object(github, "request", wraps=github.request) as request:
+            release.publish_preview(github, self.output)
+        checked = [call.args[0] for call in request.call_args_list if call.kwargs.get("head")]
+        self.assertEqual(checked, [current_archive])
+        published = ET.fromstring(github.asset_bytes("appcast.xml")).find("./channel/item")
+        self.assertEqual(published.find("enclosure").attrib, {**enclosure.attrib, "url": current_archive})
+        self.assertEqual(published.findtext("link"), f"{current_base}/tag/{tag}")
 
     def test_unchanged_feed_needs_no_writes(self):
         github = self.existing_preview()
