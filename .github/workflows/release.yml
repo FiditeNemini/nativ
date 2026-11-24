@@ -74,7 +74,7 @@ jobs:
         if: ${{ env.RELEASE_CHANNEL == 'rc' }}
         uses: actions/checkout@v4
         with:
-          repository: Blaizzy/mlx-vlm
+          repository: Neywa-Labs/mlx-vlm
           ref: main
           path: .cache/mlx-vlm
           persist-credentials: false
